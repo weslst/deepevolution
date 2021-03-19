@@ -1,7 +1,7 @@
 __version__ = "0.0.4"
 
 
-def wrap_keras():
+def wrap_keras(log_file=None):
     from tensorflow.keras.models import Model
     from deepevolution.deepevolution import DeepEvolution
     from tqdm.auto import tqdm
@@ -29,12 +29,16 @@ def wrap_keras():
             'score': []
         }
 
+        
         for generation_id, (_, best_score, mean_score, std_score) in enumerate(
                 de.evolve(X, Y, max_generations, fitness_func, population, top_k, mutation_rate, mutation_std)):
             generation_id += 1
             history['score'].append(mean_score)
             if update_func:
                 update_func(generation_id, mean_score, best_score, std_score)
+                if log_file:
+                    with open(log_file, 'a') as logger:
+                        logger.write(f"[Generation {generation_id} / {max_generations}] score: {mean_score} (best: {best_score}; std: {std_score})\n")
 
         return history
 
