@@ -1,19 +1,21 @@
 __version__ = "0.0.4"
 
+import datetime
 
-def wrap_keras(log_file=None):
+
+def wrap_keras():
     from tensorflow.keras.models import Model
     from deepevolution.deepevolution import DeepEvolution
     from tqdm.auto import tqdm
 
     def _evolve_wrapper(self, X, Y, max_generations=100, fitness_func=None, population=16, top_k=4, mutation_rate=0.2,
-                        mutation_std=0.03):
-        de = DeepEvolution(self)
+                        mutation_std=0.03, threads_num=1):
+        de = DeepEvolution(self, threads_num)
         return de.evolve(X, Y, max_generations, fitness_func, population, top_k, mutation_rate, mutation_std)
 
     def _fit_evolve_wrapper(self, X, Y, max_generations=100, fitness_func=None, population=16, top_k=4,
-                            mutation_rate=0.2, mutation_std=0.03, verbose=1):
-        de = DeepEvolution(self)
+                            mutation_rate=0.2, mutation_std=0.03, verbose=1, threads_num=1, log_file=None):
+        de = DeepEvolution(self, threads_num)
         update_func = None
 
         if verbose == 1:
@@ -29,16 +31,15 @@ def wrap_keras(log_file=None):
             'score': []
         }
 
-        
         for generation_id, (_, best_score, mean_score, std_score) in enumerate(
                 de.evolve(X, Y, max_generations, fitness_func, population, top_k, mutation_rate, mutation_std)):
             generation_id += 1
             history['score'].append(mean_score)
             if update_func:
                 update_func(generation_id, mean_score, best_score, std_score)
-                if log_file:
-                    with open(log_file, 'a') as logger:
-                        logger.write(f"[Generation {generation_id} / {max_generations}] score: {mean_score} (best: {best_score}; std: {std_score})\n")
+            if log_file:
+                with open(log_file, 'a') as logger:
+                    logger.write(f"[{str(datetime.datetime.now())[:16]}][Generation {generation_id} / {max_generations}] score: {mean_score} (best: {best_score}; std: {std_score})\n")
 
         return history
 

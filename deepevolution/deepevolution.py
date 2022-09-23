@@ -1,11 +1,15 @@
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import logging
 
+
+logger = logging.getLogger(__name__)
 
 class DeepEvolution:
 
-    def __init__(self, model):
+    def __init__(self, model, threads_num):
         """
         Instantiates a DeepEvolution object that keep track of a population of models and allows to evolve them.
 
@@ -14,6 +18,7 @@ class DeepEvolution:
         """
         self._model = model
         self._generation = []
+        self._threads_num = threads_num
 
     @staticmethod
     def _build_random_model_weights(model):
@@ -51,25 +56,38 @@ class DeepEvolution:
             for remaining_individual in range(new_population - len(self._generation)):
                 self._generation.append(self._build_random_model_weights(self._model))
 
-    def _find_elite(self, fitness_func, X, Y, top_k):
+    def _find_elite(self, fitness_func, X, Y, generation_id, top_k):
         """
         Finds the `top_k` elite members in the generation, given a fitness function `fitness_func` that tells how well
         are performing the models.
 
         :param fitness_func:
-            function parameterized as `function(model, X, Y)` that tells a score for this model. Note that the score can be any
+            function parameterized as `function(model, X, Y, generation_id, individual_index)` that tells a score for this model. Note that the score can be any
             value, and it doesn't need to be the result of a backpropagate-capable function.
             The higher the score, the better the model.
 
         :returns:
             a Series of `top_k` individuals sorted by the score in descending order (first is best, last is worst).
         """
-        scores = []
+        self.thread_index = 0
+        def get_score(weight):
+            self.thread_index += 1
+            individual_index = self.thread_index
+            model = tf.keras.models.clone_model(self._model)
+            model.set_weights(weight)
+            fitness_score = fitness_func(model, X, Y, generation_id, individual_index)
+            del model
+            return fitness_score
 
-        for weights in self._generation:
-            self._model.set_weights(weights)
-            fitness_score = fitness_func(self._model, X, Y)
-            scores.append(fitness_score)
+        scores = []
+        processed = 0
+        while processed < len(self._generation):
+            chunk = self._generation[processed : min(processed + self._threads_num, len(self._generation))]
+            processed += len(chunk)
+            logger.info(f"* Processed: {processed}, chunk: {len(chunk)}, total: {len(self._generation)}")
+            with ThreadPoolExecutor(len(chunk)) as pool:
+                for fitness_score in pool.map(lambda weight: get_score(weight), chunk):
+                    scores.append(fitness_score)
 
         weights_sorted = pd.Series(self._generation, index=scores).sort_index(ascending=False)
         return weights_sorted.iloc[:top_k]
@@ -211,7 +229,7 @@ class DeepEvolution:
 
         try:
             for generation_id in range(max_generations):
-                best_weights = self._find_elite(fitness_func, X, Y, top_k=top_k)
+                best_weights = self._find_elite(fitness_func, X, Y, generation_id + 1, top_k=top_k)
                 index = best_weights.index.to_series()
 
                 max_score = np.round(index.max(), 4)
