@@ -75,7 +75,7 @@ class DeepEvolution:
             individual_index = self.thread_index
             model = tf.keras.models.clone_model(self._model)
             model.set_weights(weight)
-            fitness_score = fitness_func(model, X, Y, generation_id, individual_index)
+            fitness_score = fitness_func(model, X, Y, generation_id, individual_index, deepevolution=self)
             del model
             return fitness_score
 
@@ -84,7 +84,7 @@ class DeepEvolution:
         while processed < len(self._generation):
             chunk = self._generation[processed : min(processed + self._threads_num, len(self._generation))]
             processed += len(chunk)
-            logger.info(f"* Processed: {processed}, chunk: {len(chunk)}, total: {len(self._generation)}")
+            print(f"* Processed: {processed}, chunk: {len(chunk)}, total: {len(self._generation)}")
             with ThreadPoolExecutor(len(chunk)) as pool:
                 for fitness_score in pool.map(lambda weight: get_score(weight), chunk):
                     scores.append(fitness_score)
